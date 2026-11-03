@@ -156,7 +156,7 @@ impl ToolResultReceiver {
     }
 }
 
-pub(super) fn prost_json(value: &prost_types::Value) -> Value {
+pub(crate) fn prost_json(value: &prost_types::Value) -> Value {
     use prost_types::value::Kind;
     match value.kind.as_ref() {
         None | Some(Kind::NullValue(_)) => Value::Null,

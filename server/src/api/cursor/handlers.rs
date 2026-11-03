@@ -6,6 +6,7 @@ use axum::{
     routing::{get, post},
     Router,
 };
+use prost::Message;
 use tower_http::decompression::RequestDecompressionLayer;
 
 use crate::{
@@ -47,6 +48,14 @@ fn router_with_proxy(
     Router::new()
         .route("/__byok-api__/healthz", get(health))
         .route("/agent.v1.AgentService/RunSSE", post(run_sse_handler))
+        .route(
+            "/aiserver.v1.InferenceService/RunInferenceSSE",
+            post(super::inference::sse),
+        )
+        .route(
+            "/aiserver.v1.InferenceService/RunInferencePoll",
+            post(super::inference::poll),
+        )
         .route("/aiserver.v1.BidiService/BidiAppend", post(bidi_handler))
         .route(
             "/aiserver.v1.AiService/AvailableDocs",
@@ -231,11 +240,71 @@ async fn bidi_handler(
     request: Request<Body>,
 ) -> Result<Response<Body>> {
     let (parts, body) = buffered(request).await?;
-    let request: ai::BidiAppendRequest = connect::decode_unary(&body)?;
+    let content_type = parts
+        .headers
+        .get("content-type")
+        .and_then(|v| v.to_str().ok());
+    let user_agent = parts
+        .headers
+        .get("user-agent")
+        .and_then(|v| v.to_str().ok());
+    tracing::debug!(
+        body_bytes = body.len(),
+        content_type,
+        user_agent,
+        "received Cursor BidiAppend"
+    );
+    let request: ai::BidiAppendRequest = connect::decode_unary(&body).inspect_err(|error| {
+        tracing::warn!(
+            body_bytes = body.len(),
+            content_type,
+            user_agent,
+            error = %error,
+            "Cursor BidiAppend envelope decode failed"
+        );
+    })?;
+    tracing::debug!(
+        request_id = request.request_id.as_ref().map(|id| id.request_id.as_str()),
+        append_seqno = request.append_seqno,
+        hex_chars = request.data.len(),
+        binary_bytes = request.data_binary.len(),
+        "decoded Cursor BidiAppend envelope"
+    );
+    let inference_id = request
+        .request_id
+        .as_ref()
+        .map(|id| id.request_id.as_str())
+        .unwrap_or_default();
+    let payload = if request.data.is_empty() {
+        request.data_binary.clone()
+    } else {
+        hex::decode(&request.data)
+            .map_err(|_| crate::Error::Protocol("invalid BidiAppend hex".into()))?
+    };
+    if registry.inference().contains(inference_id).await
+        || crate::cursor::inference::InferenceRegistry::is_run(&payload)
+    {
+        if !registry.inference().append(&request, &payload).await? {
+            return proxy::forward(
+                Extension(proxy),
+                Request::from_parts(parts, Body::from(body)),
+            )
+            .await;
+        }
+        return Ok(Response::builder()
+            .header(header::CONTENT_TYPE, "application/proto")
+            .body(Body::from(ai::BidiAppendResponse {}.encode_to_vec()))
+            .expect("static Bidi response headers"));
+    }
     let decoded = bidi::decode(&request)?;
     let first_model = decoded.model_id().map(str::to_owned);
     let conversation_id = decoded.conversation_id().map(str::to_owned);
     let trace_metadata = decoded.trace_metadata();
+    tracing::debug!(
+        request_id = decoded.request_id,
+        metadata = %trace_metadata,
+        "decoded Cursor AgentClientMessage"
+    );
     let trace = registry.trace(&decoded.request_id);
     let local = if let Some(model_id) = decoded.model_id() {
         // 插件模型 ID 只在本地有意义,永远不转发到 Cursor 官方上游。
@@ -360,7 +429,9 @@ fn trace_outcome(
     metadata
 }
 
-async fn buffered(request: Request<Body>) -> Result<(axum::http::request::Parts, Bytes)> {
+pub(super) async fn buffered(
+    request: Request<Body>,
+) -> Result<(axum::http::request::Parts, Bytes)> {
     let (parts, body) = request.into_parts();
     let body = to_bytes(body, usize::MAX)
         .await

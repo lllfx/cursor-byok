@@ -25,6 +25,17 @@ fn main() {
     for proto in protos {
         println!("cargo:rerun-if-changed={}", proto.display());
     }
+    let inference_proto = proto_dir.join("inference_v1.proto");
+    prost_build::Config::new()
+        .compile_protos(
+            std::slice::from_ref(&inference_proto),
+            &[
+                proto_dir.clone(),
+                protoc_bin_vendored::include_path().expect("protobuf includes"),
+            ],
+        )
+        .expect("compile Cursor inference schema");
+    println!("cargo:rerun-if-changed={}", inference_proto.display());
     let aiserver_source = std::fs::read_to_string(&aiserver_proto).expect("read aiserver_v1.proto");
     for required in [
         "message BidiAppendRequest",

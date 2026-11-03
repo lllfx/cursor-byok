@@ -1,4 +1,10 @@
 //! Includes generated Cursor protobuf types.
+/// The RunInference wire contract, independent of the Agent checkpoint protocol.
+#[allow(clippy::large_enum_variant)]
+pub mod inference {
+    include!(concat!(env!("OUT_DIR"), "/aiserver.v1.rs"));
+}
+
 pub mod agent {
     #[allow(clippy::large_enum_variant)]
     pub mod v1 {

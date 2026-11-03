@@ -1,0 +1,6 @@
+# Use the sparse rsproxy mirror for Rust dependencies.
+[source.crates-io]
+replace-with = "rsproxy-sparse"
+
+[source.rsproxy-sparse]
+registry = "sparse+https://rsproxy.cn/index/"

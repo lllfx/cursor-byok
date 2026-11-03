@@ -2,6 +2,7 @@
 
 pub mod bidi;
 mod handlers;
+mod inference;
 pub mod proxy;
 mod run_sse;
 

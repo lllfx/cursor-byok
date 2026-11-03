@@ -39,6 +39,7 @@ struct RegistryInner {
     web_cache: WebCache,
     plugins: Option<PluginRegistry>,
     conversations: ConversationRegistry,
+    inference: crate::cursor::inference::InferenceRegistry,
 }
 
 #[derive(Clone)]
@@ -119,10 +120,14 @@ impl TransportRegistry {
                 traces: CursorTraceService::new(store.clone()),
                 conversations: ConversationRegistry::new(
                     store.clone(),
-                    provider,
+                    provider.clone(),
                     compiler,
                     web_cache.clone(),
                     local_rules_dir,
+                ),
+                inference: crate::cursor::inference::InferenceRegistry::new(
+                    store.clone(),
+                    provider,
                 ),
                 store,
                 web_cache,
@@ -133,6 +138,10 @@ impl TransportRegistry {
 
     pub fn store(&self) -> &Store {
         &self.inner.store
+    }
+
+    pub fn inference(&self) -> &crate::cursor::inference::InferenceRegistry {
+        &self.inner.inference
     }
 
     pub fn trace(
@@ -257,6 +266,7 @@ impl TransportRegistry {
     }
 
     pub async fn shutdown(&self) {
+        self.inner.inference.shutdown().await;
         self.inner.conversations.shutdown().await;
         let handles = std::mem::take(&mut *self.inner.local.lock().await);
         self.inner.upstream.lock().await.clear();

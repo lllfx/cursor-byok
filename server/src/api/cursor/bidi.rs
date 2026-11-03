@@ -1,4 +1,6 @@
 //! Accepts ordered Cursor Bidi append requests and routes them by request_id.
+mod diagnostics;
+
 use prost::Message;
 
 use crate::{
@@ -172,10 +174,21 @@ pub fn decode(request: &ai::BidiAppendRequest) -> Result<DecodedAppend> {
     }
     let payload = hex::decode(&request.data)
         .map_err(|error| Error::Protocol(format!("invalid BidiAppend hex: {error}")))?;
+    let message = agent::AgentClientMessage::decode(payload.as_slice()).inspect_err(|error| {
+        tracing::warn!(
+            request_id,
+            append_seqno = request.append_seqno,
+            hex_chars = request.data.len(),
+            payload_bytes = payload.len(),
+            error = %error,
+            wire_structure = %diagnostics::wire_structure(&payload),
+            "Cursor AgentClientMessage decode failed"
+        );
+    })?;
     Ok(DecodedAppend {
         request_id: request_id.into(),
         seqno: request.append_seqno,
-        message: agent::AgentClientMessage::decode(payload.as_slice())?,
+        message,
     })
 }
 
