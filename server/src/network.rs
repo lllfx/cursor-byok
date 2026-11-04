@@ -95,8 +95,9 @@ impl NetworkClients {
 
 pub async fn client_builder(store: &Store) -> Result<reqwest::ClientBuilder> {
     let settings = store.proxy_settings_secret().await?;
-    // Use the platform TLS stack for compatibility with provider gateways that
-    // only offer legacy TLS 1.2 cipher suites unsupported by rustls.
+    // Use the platform TLS stack for provider cipher support. The reqwest
+    // native-tls-alpn feature negotiates HTTP/2 on supporting upstreams so
+    // concurrent requests can share a pooled TLS connection.
     let mut builder = reqwest::Client::builder().use_native_tls();
     if settings.mode.is_custom() {
         builder = builder.proxy(custom_proxy(&settings)?);

@@ -25,6 +25,12 @@ where
         _ = cancellation.cancelled() => return Ok(Attempt::Cancelled),
         response = build().send() => response,
     }?;
+    tracing::debug!(
+        provider = label,
+        http_version = ?response.version(),
+        status = %response.status(),
+        "provider HTTP response headers received"
+    );
     if let Some(recorder) = recorder {
         recorder
             .response_headers(response.status().as_u16())

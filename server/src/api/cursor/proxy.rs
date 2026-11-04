@@ -118,6 +118,7 @@ async fn forward_request(
     };
 
     let status = upstream.status();
+    let http_version = upstream.version();
     let mut response_headers = upstream.headers().clone();
     remove_hop_by_hop_headers(&mut response_headers);
     let mut response = Response::new(Body::from_stream(upstream.bytes_stream()));
@@ -128,6 +129,7 @@ async fn forward_request(
         method = %parts.method,
         path,
         %status,
+        ?http_version,
         elapsed_ms = started.elapsed().as_millis(),
         "forwarded Cursor backend request"
     );
