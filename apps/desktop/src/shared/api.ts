@@ -171,19 +171,6 @@ export interface TokenPricingSettings {
   cache_write_per_million: number;
 }
 
-export type PluginRuntimeState = "uninitialized" | "initializing" | "ready" | "failed" | "unsupported";
-export type PluginRuntimePhase = "checking" | "downloading" | "verifying" | "installing" | "validating";
-
-export interface PluginRuntimeStatus {
-  state: PluginRuntimeState;
-  version: string;
-  target: string | null;
-  phase: PluginRuntimePhase | null;
-  downloaded_bytes: number;
-  total_bytes: number | null;
-  error: string | null;
-}
-
 /** 插件提供的显示文本:纯字符串或 locale → 文本映射。 */
 export type PluginLocalizedText = string | Record<string, string>;
 
@@ -197,84 +184,6 @@ export function pluginText(value: PluginLocalizedText | null | undefined, locale
     if (normalized === language || normalized.startsWith(`${language}-`)) return text;
   }
   return value["en-US"] ?? value["en"] ?? Object.values(value)[0] ?? "";
-}
-
-export interface PluginResourceState {
-  status: "ready" | "cooling" | "invalid";
-  retryAtMs?: number | null;
-  message?: string | null;
-}
-
-export interface PluginResourceMetric {
-  id: string;
-  label: PluginLocalizedText;
-  unit: "percent" | "count";
-  value: number;
-  resetAtMs?: number | null;
-}
-
-export interface PluginResourceView {
-  id: string;
-  state: PluginResourceState;
-  displayName: string;
-  description: PluginLocalizedText | null;
-  metrics: PluginResourceMetric[];
-  createdAtMs: number;
-}
-
-export interface PluginAddMethod {
-  type: "oauth2.0" | "oauth2.authorization-code";
-  id: string;
-  displayName: PluginLocalizedText;
-  description: PluginLocalizedText | null;
-  callback?: { port: number | null; path: string | null };
-}
-
-export interface PluginImportDescriptor {
-  displayName: PluginLocalizedText;
-  description: PluginLocalizedText | null;
-  accept: string[];
-  multiple: boolean;
-}
-
-export interface PluginResourceAction {
-  id: string;
-  displayName: PluginLocalizedText;
-  description: PluginLocalizedText | null;
-  target: "resource" | "card";
-  destructive: boolean;
-}
-
-export interface PluginResourceActionField {
-  id: string;
-  label: PluginLocalizedText;
-  value: string;
-}
-
-export interface PluginResourceActionCard {
-  id: string;
-  title: PluginLocalizedText;
-  status: PluginLocalizedText | null;
-  grantedAtMs: number | null;
-  expiresAtMs: number | null;
-  fields: PluginResourceActionField[];
-}
-
-export interface PluginResourceActionResult {
-  title: PluginLocalizedText;
-  description: PluginLocalizedText | null;
-  cards: PluginResourceActionCard[];
-}
-
-export interface PluginResourceDescriptor {
-  type: string;
-  displayName: PluginLocalizedText;
-  add: PluginAddMethod[];
-  import: PluginImportDescriptor | null;
-  canRefresh: boolean;
-  canRemove: boolean;
-  actions: PluginResourceAction[];
-  resources: PluginResourceView[];
 }
 
 export interface PluginModelDescriptor {
@@ -311,34 +220,6 @@ export interface PluginDescriptor {
   author: string | null;
   icon: string;
   providers: PluginProviderDescriptor[];
-  resources: PluginResourceDescriptor[];
-}
-
-export interface PluginOAuthBegin {
-  sessionId: string;
-  userCode: string | null;
-  verificationUrl: string;
-  verificationUrlComplete: string | null;
-  expiresAtMs: number;
-  pollIntervalMs: number;
-}
-
-export type PluginOAuthPoll =
-  | { status: "pending"; pollIntervalMs: number }
-  | { status: "completed"; added: number; updated: number; modelSyncError: string | null }
-  | { status: "denied"; message: string | null }
-  | { status: "failed"; message: string };
-
-export interface PluginImportFile {
-  name: string;
-  content: string;
-}
-
-export interface PluginImportResult {
-  added: number;
-  updated: number;
-  warnings: string[];
-  modelSyncError: string | null;
 }
 
 export function configuredPluginModels(plugins: PluginDescriptor[]): PluginModelDescriptor[] {
@@ -499,19 +380,7 @@ export const api = {
   cursorHarness: () => request<CursorHarnessStatus>("/harness/cursor/status"),
   initializeCursorCa: () => request<CursorHarnessStatus>("/harness/cursor/ca/initialize", { method: "POST" }),
   plugins: () => request<PluginDescriptor[]>("/plugins"),
-  pluginOAuthBegin: (pluginId: string, resourceType: string, methodId: string) => request<PluginOAuthBegin>(`/plugins/${encodeURIComponent(pluginId)}/resources/${encodeURIComponent(resourceType)}/add/${encodeURIComponent(methodId)}/begin`, { method: "POST" }),
-  pluginOAuthPoll: (sessionId: string, signal?: AbortSignal) => request<PluginOAuthPoll>(`/plugins/oauth/${encodeURIComponent(sessionId)}/poll`, { method: "POST", signal }),
-  importPluginResources: (pluginId: string, resourceType: string, files: PluginImportFile[]) => request<PluginImportResult>(`/plugins/${encodeURIComponent(pluginId)}/resources/${encodeURIComponent(resourceType)}/import`, { method: "POST", body: JSON.stringify(files) }),
-  refreshPluginResource: (pluginId: string, resourceType: string, resourceId: string) => request<void>(`/plugins/${encodeURIComponent(pluginId)}/resources/${encodeURIComponent(resourceType)}/${encodeURIComponent(resourceId)}/refresh`, { method: "POST" }),
-  pluginResourceAction: (pluginId: string, resourceType: string, resourceId: string, actionId: string, input: unknown = {}) => request<PluginResourceActionResult>(`/plugins/${encodeURIComponent(pluginId)}/resources/${encodeURIComponent(resourceType)}/${encodeURIComponent(resourceId)}/actions/${encodeURIComponent(actionId)}`, { method: "POST", body: JSON.stringify(input) }),
-  deletePluginResource: (pluginId: string, resourceType: string, resourceId: string) => request<void>(`/plugins/${encodeURIComponent(pluginId)}/resources/${encodeURIComponent(resourceType)}/${encodeURIComponent(resourceId)}`, { method: "DELETE" }),
-  syncPluginModels: (pluginId: string, providerId: string) => request<{ models: number }>(`/plugins/${encodeURIComponent(pluginId)}/providers/${encodeURIComponent(providerId)}/models/sync`, { method: "POST" }),
-  setPluginModelEnabled: (pluginId: string, providerId: string, modelId: string, enabled: boolean) => request<void>(`/plugins/${encodeURIComponent(pluginId)}/providers/${encodeURIComponent(providerId)}/models/enabled`, { method: "PUT", body: JSON.stringify({ modelId, enabled }) }),
-  pluginResourceExportUrl: (servicePort: number, pluginId: string, resourceType: string) => `http://127.0.0.1:${servicePort}${API_ROOT}/plugins/${encodeURIComponent(pluginId)}/resources/${encodeURIComponent(resourceType)}/export`,
-  removePluginConfiguration: (pluginId: string) => request<void>(`/plugins/${encodeURIComponent(pluginId)}`, { method: "DELETE" }),
-  pluginRuntime: () => request<PluginRuntimeStatus>("/plugins/runtime"),
-  initializePluginRuntime: () => request<PluginRuntimeStatus>("/plugins/runtime", { method: "POST" }),
-  cancelPluginRuntimeInitialization: () => request<PluginRuntimeStatus>("/plugins/runtime", { method: "DELETE" }),
+
   openCursorCaInstallTerminal: async (command: string) => {
     if (!packagedDesktop) throw new Error(t("请在桌面应用中打开终端安装 CA"));
     const { invoke } = await import("@tauri-apps/api/core");
